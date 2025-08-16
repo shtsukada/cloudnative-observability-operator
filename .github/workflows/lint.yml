@@ -12,6 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install yamllint & jq
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install yamllint
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+
       - name: Run yamllint
         run: yamllint .
       - name: Run markdownlint
@@ -21,26 +28,31 @@ jobs:
           set -e
           find . -type f -name "*.json" -print0 | xargs -0 -I{} sh -c 'jq . "{}" >/dev/null' || true
 
+      - name: Detect Go files
+        id: gofiles
+        shell: bash
+        run: |
+          has_mod=""
+          if [ -f go.mod ]; then has_mod="yes"; fi
+          count=$(git ls-files '*.go' | wc -l | tr -d ' ')
+          echo "has_mod=$has_mod"        >> "$GITHUB_OUTPUT"
+          echo "count=$count"            >> "$GITHUB_OUTPUT"
+          echo "go.mod: $has_mod, .go files: $count"
+
       - name: Setup Go
-        if: hashFiles('go.mod') != ''
+        if: steps.gofiles.outputs.has_mod == 'yes'
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.22'
+          cache: true
 
       - name: golangci-lint
-        if: hashFiles('go.mod') != '' && hashFiles('**/*.go') != ''
+        if: steps.gofiles.outputs.has_mod == 'yes' && steps.gofiles.outputs.count != '0'
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.61
           args: --timeout 5m
 
-      - name: Count Go files
-        id: list_go_files
-        run: |
-          n=$(git ls-files '*.go' | wc -l | tr -d ' ')
-          echo "count=$n" >> "$GITHUB_OUTPUT"
-          echo "Go files: $n"
-
       - name: go test
-        if: hashFiles('go.mod') != '' && ${{ steps.list_go_files.outputs.count != '0' }}
+        if: steps.gofiles.outputs.has_mod == 'yes' && steps.gofiles.outputs.count != '0'
         run: go test ./... -count=1
