@@ -1,5 +1,12 @@
 extends: default
 
+yaml-files:
+  - '*.yaml'
+  - '*.yml'
+
+ignore: |
+  config/**
+
 rules:
   # 80 だと GitHub Actions の式や長い URL がよく当たるので緩和
   line-length:
@@ -19,4 +26,11 @@ rules:
     level: warning
 
   # コメントのインデントは厳密にしない
+  comments-indentation: disable
+
+  indentation:
+    level: warning
+  comments:
+    require-starting-space: false
+    level: warning
   comments-indentation: disable
