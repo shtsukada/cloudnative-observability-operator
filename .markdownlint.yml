@@ -1,3 +1,7 @@
-MD013: false        # 行長を無効化
-MD033: false        # インラインHTML許可
-MD041: false        # 最初に H1 見出し必須を無効化
+MD009: false
+MD013: false
+MD022: false
+MD029: false
+MD032: false
+MD033: false
+MD041: false
