@@ -8,4 +8,14 @@ layout:
 - go.kubebuilder.io/v4
 projectName: cloudnative-observability-operator
 repo: github.com/shtsukada/cloudnative-observability-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: shtsukada.dev
+  group: observability
+  kind: ObservabilityConfig
+  path: github.com/shtsukada/cloudnative-observability-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

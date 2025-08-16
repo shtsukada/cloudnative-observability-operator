@@ -1,0 +1,9 @@
+apiVersion: observability.shtsukada.dev/v1alpha1
+kind: ObservabilityConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: cloudnative-observability-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: observabilityconfig-sample
+spec:
+  # TODO(user): Add fields here
