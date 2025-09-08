@@ -1,5 +1,11 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+VERSION ?=0.1.0
+IMG_REPO ?= ghcr.io/stsukada/cloudnative-observability-operator
+IMG ?= $(IMG_REPO):$(VERSION)
+
+GOOS ?= linux
+GOARCH ?= amd64
+CGO_ENABLED ?= 0
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -103,10 +109,9 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	$(GOLANGCI_LINT) config verify
 
 ##@ Build
-
 .PHONY: build
 build: manifests generate fmt vet ## Build manager binary.
-	go build -o bin/manager cmd/main.go
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO_ENABLED) go build -o bin/manager cmd/main.go
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -117,7 +122,8 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	@if [ "$(VERSION)" = "latest" ]; then echo "ERROR: :latest is forbidden. specify VERSION=SemVer"; exit 2; fi
+		$(CONTAINER_TOOL) build -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
@@ -140,6 +146,11 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx rm cloudnative-observability-operator-builder
 	rm Dockerfile.cross
 
+.PHONY: docker-buildx-amd64
+docker-buildx-amd64: ## Build docker image (linux/amd64) with buildx; :latest is forbidden
+	@if [ "$(VERSION)" = "latest" ]; then echo "ERROR: :latest is forbidden. specify VERSION=SemVer"; exit 2; fi
+	$(CONTAINER_TOOL) buildx build --platform linux/amd64 --build-arg GOOS=$(GOOS) --build-arg GOARCH=$(GOARCH) -t $(IMG) --load .
+
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
@@ -149,7 +160,7 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 ##@ Deployment
 
 ifndef ignore-not-found
-  ignore-not-found = false
+	ignore-not-found = false
 endif
 
 .PHONY: install
@@ -192,6 +203,8 @@ ENVTEST_VERSION ?= $(shell go list -m -f "{{ .Version }}" sigs.k8s.io/controller
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
 GOLANGCI_LINT_VERSION ?= v2.1.6
+SYFT_VERSION ?= v1.18.1
+COSIGN_VERSION ?= v2.4.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -220,6 +233,41 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+.PHONY: syft
+syft: $(LOCALBIN) ## Install syft locally if necessary.
+	$(call go-install-tool,$(LOCALBIN)/syft,github.com/anchore/syft/cmd/syft,$(SYFT_VERSION))
+
+.PHONY: cosign
+cosign: $(LOCALBIN) ## Install cosign locally if necessary.
+	$(call go-install-tool,$(LOCALBIN)/cosign,github.com/sigstore/cosign/v2/cmd/cosign,$(COSIGN_VERSION))
+
+.PHONY: tools
+tools: kustomize controller-gen golangci-lint syft cosign ## Install pinned toolchain into LOCALBIN
+	@echo "tools installed into $(LOCALBIN)"
+
+.PHONY: sbom
+sbom: ## Generate SBOM (spdx-json via syft)
+	@[ -n "$(IMG)" ] || (echo "IMG not set"; exit 2)
+	@{ \
+		if [ -x "$(LOCALBIN)/syft-$(SYFT_VERSION)" ] || [ -x "$(LOCALBIN)/syft" ]; then \
+			"$(LOCALBIN)/syft" -o spdx-json $(IMG) > sbom.spdx.json; \
+		else \
+			syft -o spdx-json $(IMG) > sbom.spdx.json; \
+		fi \
+	}
+	@echo "SBOM written to sbom.spdx.json"
+
+.PHONY: sign
+sign: ## Sign image (cosign) - require auth/keys configured
+	@[ -n "$(IMG)" ] || (echo "IMG not set"; exit 2)
+	@{ \
+		if [ -x "$(LOCALBIN)/cosign-$(COSIGN_VERSION)" ] || [ -x "$(LOCALBIN)/cosign" ]; then \
+			"$(LOCALBIN)/cosign" sign $(IMG); \
+		else \
+			cosign sign $(IMG); \
+		fi \
+	}
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

@@ -72,3 +72,5 @@ argocd-ssh-key.pub
 # OS依存
 # ----------------------------------------
 .DS_Store
+
+sbom.spdx.json
