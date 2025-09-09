@@ -1,64 +1,58 @@
 version: "2"
+
 run:
-  allow-parallel-runners: true
-
-skip-dirs:
-  - vendor
-  - bin
-  - generated
-  - mocks
-
-skip-files:
-  - "zz_.*\\.go"
-  - ".*_generated\\.go"
-  - "api/.*/zz_generated.*\\.go"
+  timeout: 5m
+  tests: true
 
 linters:
-  default: none
   enable:
-    - copyloopvar
-    - dupl
-    - errcheck
-    - ginkgolinter
-    - goconst
-    - gocyclo
     - govet
-    - ineffassign
-    - lll
-    - misspell
-    - nakedret
-    - prealloc
-    - revive
     - staticcheck
-    - unconvert
-    - unparam
+    - ineffassign
+    - errcheck
     - unused
+    - goconst
+    - gocritic
+    - revive
+    - gosec
+
+  # 旧 linters-settings → v2 は linters.settings
   settings:
     revive:
-      rules:
-        - name: comment-spacings
-        - name: import-shadowing
+      severity: warning
+    gosec:
+      excludes:
+        - G104
+        - G306
+        - G404
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+  # 旧 skip-files/dirs, issues.exclude-* → v2 は linters.exclusions.*
   exclusions:
-    generated: lax
+    # 生成ファイル扱いの厳しさ（必要に応じて lax に）
+    generated: strict
+    # よくある誤検知のプリセット
+    presets:
+      - common-false-positives
+      - std-error-handling
+
+    # パス単位の除外（解析はするが報告しない）
+    paths:
+      - "^bin/"
+      - "^vendor/"
+      - "zz_generated.*\\.go"
+
+    # ルール単位の除外（テストでは一部リンタを緩める等）
     rules:
-      - linters:
-          - lll
-        path: api/*
-      - linters:
-          - dupl
-          - lll
-        path: internal/*
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
-formatters:
-  enable:
-    - gofmt
-    - goimports
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - funlen
+      - path: zz_generated.*\.go
+        linters:
+          - revive
+          - gofmt
+          - gocritic
+          - gosec
