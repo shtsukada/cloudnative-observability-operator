@@ -25,40 +25,62 @@ import (
 
 // ObservabilityConfigSpec defines the desired state of ObservabilityConfig
 type ObservabilityConfigSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
+	// Example field: endpoint URL of OTLP exporter
+	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:MaxLength=2048
+	Endpoint string `json:"endpoint"`
 
-	// foo is an example field of ObservabilityConfig. Edit observabilityconfig_types.go to remove/update
-	// +optional
-	Foo *string `json:"foo,omitempty"`
+	// Example: sampling ratio (0.0 - 1.0)
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1
+	// +kubebuilder:default:=0.1
+	Sampling float64 `json:"sampling,omitempty"`
+
+	// Enable metrics pipeline
+	// +kubebuilder:default:=true
+	MetricsEnabled bool `json:"metricsEnabled,omitempty"`
 }
 
 // ObservabilityConfigStatus defines the observed state of ObservabilityConfig.
 type ObservabilityConfigStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// +kubebuilder:validation:Enum=Ready;Error;Reconciling
+	// +kubebuilder:default:=Reconciling
+	Phase string `json:"phase,omitempty"`
+
+	// Reason for last transition
+	// +kubebuilder:validation:MaxLength=1024
+	Reason string `json:"reason,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:path=observabilityconfigs,scope=Namespaced,shortName=obscfg,categories=all
+
+/*
++kubebuilder:printcolumn:name="Endpoint",type=string,JSONPath=`.spec.endpoint`
++kubebuilder:printcolumn:name="Sampling",type=string,JSONPath=`.spec.sampling`
++kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
++kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+*/
 
 // ObservabilityConfig is the Schema for the observabilityconfigs API
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 type ObservabilityConfig struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of ObservabilityConfig
 	// +required
-	Spec ObservabilityConfigSpec `json:"spec"`
+	Spec ObservabilityConfigSpec `json:"spec,omitempty"`
 
 	// status defines the observed state of ObservabilityConfig
 	// +optional
-	Status ObservabilityConfigStatus `json:"status,omitempty,omitzero"`
+	Status ObservabilityConfigStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
