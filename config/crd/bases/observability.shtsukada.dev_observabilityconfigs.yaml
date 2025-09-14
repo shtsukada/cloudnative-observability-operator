@@ -17,8 +17,6 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ObservabilityConfig is the Schema for the observabilityconfigs
-          API
         properties:
           apiVersion:
             description: |-
@@ -40,13 +38,39 @@ spec:
           spec:
             description: spec defines the desired state of ObservabilityConfig
             properties:
-              foo:
-                description: foo is an example field of ObservabilityConfig. Edit
-                  observabilityconfig_types.go to remove/update
+              endpoint:
+                description: 'Example field: endpoint URL of OTLP exporter'
+                maxLength: 2048
+                pattern: ^https?://
                 type: string
+              metricsEnabled:
+                default: true
+                description: Enable metrics pipeline
+                type: boolean
+              samplingPercent:
+                default: 10
+                description: 'Example: sampling ratio percent (0-100)'
+                format: int32
+                maximum: 100
+                minimum: 0
+                type: integer
+            required:
+            - endpoint
             type: object
           status:
             description: status defines the observed state of ObservabilityConfig
+            properties:
+              phase:
+                default: Reconciling
+                enum:
+                - Ready
+                - Error
+                - Reconciling
+                type: string
+              reason:
+                description: Reason for last transition
+                maxLength: 1024
+                type: string
             type: object
         required:
         - spec

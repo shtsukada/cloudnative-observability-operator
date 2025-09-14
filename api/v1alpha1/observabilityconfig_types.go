@@ -30,11 +30,11 @@ type ObservabilityConfigSpec struct {
 	// +kubebuilder:validation:MaxLength=2048
 	Endpoint string `json:"endpoint"`
 
-	// Example: sampling ratio (0.0 - 1.0)
+	// Example: sampling ratio percent (0-100)
 	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=1
-	// +kubebuilder:default:=0.1
-	Sampling float64 `json:"sampling,omitempty"`
+	// +kubebuilder:validation:Maximum=100
+	// +kubebuilder:default:=10
+	SamplingPercent *int32 `json:"samplingPercent,omitempty"`
 
 	// Enable metrics pipeline
 	// +kubebuilder:default:=true
