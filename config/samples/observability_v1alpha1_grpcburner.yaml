@@ -1,0 +1,30 @@
+apiVersion: observability.shtsukada.dev/v1alpha1
+kind: GrpcBurner
+metadata:
+  name: sample
+spec:
+  image: ghcr.io/stsukada/grpc-burner:1.0.0
+  replicas: 2
+  ports:
+    - name: grpc
+      containerPort: 50051
+    - name: metrics
+      containerPort: 9090
+      servicePort: 9090
+  env:
+    - name: LOG_LEVEL
+      value: info
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  otlpEndpoint:
+    endpoint: "otel-collector.monitoring.svc:4317"
+    insecure: true
+    headers:
+      x-otlp-team: "demo"
+    timeout: 5s
+  updateStrategy: RollingUpdate

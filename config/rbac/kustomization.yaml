@@ -25,4 +25,6 @@ resources:
 - observabilityconfig_admin_role.yaml
 - observabilityconfig_editor_role.yaml
 - observabilityconfig_viewer_role.yaml
+- grpcburner_viewer_role.yaml
+- grpcburner_editor_role.yaml
 
