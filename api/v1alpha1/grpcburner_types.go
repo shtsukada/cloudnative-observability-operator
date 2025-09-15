@@ -7,18 +7,21 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type UpdateStrategyType string
 
+type ConditionType = string
+
 const (
 	UpdateStrategyRollingUpdate UpdateStrategyType = "RollingUpdate"
 	UpdateStrategyRecreate      UpdateStrategyType = "Recreate"
 
-	ConditionReady       string = "Ready"
-	ConditionProgressing string = "Progressing"
-	ConditionDegraded    string = "Degraded"
+	ConditionReady       ConditionType = "Ready"
+	ConditionProgressing ConditionType = "Progressing"
+	ConditionDegraded    ConditionType = "Degraded"
 )
 
 type PortSpec struct {
@@ -116,6 +119,25 @@ type GrpcBurnerList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []GrpcBurner `json:"items"`
+}
+
+func (gb *GrpcBurner) SetCondition(t string, s metav1.ConditionStatus, reason, msg string) {
+	apimeta.SetStatusCondition(&gb.Status.Conditions, metav1.Condition{
+		Type:               t,
+		Status:             s,
+		Reason:             reason,
+		Message:            msg,
+		ObservedGeneration: gb.GetGeneration(),
+	})
+}
+
+func (gb *GrpcBurner) GetCondition(t string) *metav1.Condition {
+	return apimeta.FindStatusCondition(gb.Status.Conditions, t)
+}
+
+func (gb *GrpcBurner) IsConditionTrue(t string) bool {
+	c := gb.GetCondition(t)
+	return c != nil && c.Status == metav1.ConditionTrue
 }
 
 func init() {

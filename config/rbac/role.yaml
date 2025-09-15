@@ -8,7 +8,9 @@ rules:
   - ""
   resources:
   - configmaps
+  - events
   - secrets
+  - serviceaccounts
   - services
   verbs:
   - create
@@ -35,6 +37,7 @@ rules:
 - apiGroups:
   - observability.shtsukada.dev
   resources:
+  - grpcburners
   - observabilityconfigs
   verbs:
   - create
@@ -47,12 +50,14 @@ rules:
 - apiGroups:
   - observability.shtsukada.dev
   resources:
+  - grpcburners/finalizers
   - observabilityconfigs/finalizers
   verbs:
   - update
 - apiGroups:
   - observability.shtsukada.dev
   resources:
+  - grpcburners/status
   - observabilityconfigs/status
   verbs:
   - get

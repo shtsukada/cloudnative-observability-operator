@@ -201,6 +201,14 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+	if err = (&controller.GrpcBurnerReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("grpcburner-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "GrpcBurner")
+		os.Exit(1)
+	}
 
 	if err := (&controller.ObservabilityConfigReconciler{
 		Client: mgr.GetClient(),
