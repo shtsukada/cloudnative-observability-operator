@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	observabilityv1alpha1 "github.com/shtsukada/cloudnative-observability-operator/api/v1alpha1"
@@ -33,12 +35,13 @@ import (
 var _ = Describe("ObservabilityConfig Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
+		const namespace = "default"
 
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
 			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
+			Namespace: namespace, // TODO(user):Modify as needed
 		}
 		observabilityconfig := &observabilityv1alpha1.ObservabilityConfig{}
 
@@ -49,36 +52,55 @@ var _ = Describe("ObservabilityConfig Controller", func() {
 				resource := &observabilityv1alpha1.ObservabilityConfig{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
-						Namespace: "default",
+						Namespace: namespace,
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: observabilityv1alpha1.ObservabilityConfigSpec{
+						Endpoint: "otel-collector.monitoring:4317",
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
+			By("cleanup the specific resource instance observabilityConfig")
 			resource := &observabilityv1alpha1.ObservabilityConfig{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance ObservabilityConfig")
+			Expect(k8sClient.Get(ctx, typeNamespacedName, resource)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &ObservabilityConfigReconciler{
+		It("should set Conditions/Phase/ObservedGeneration as expected", func() {
+			r := &ObservabilityConfigReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			_, err := r.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			oc := &observabilityv1alpha1.ObservabilityConfig{}
+			Expect(k8sClient.Get(ctx, typeNamespacedName, oc)).To(Succeed())
+
+			cond1 := apimeta.FindStatusCondition(oc.Status.Conditions, "Ready")
+			Expect(cond1).NotTo(BeNil())
+			Expect(cond1.Status).To(Equal(metav1.ConditionFalse))
+			Expect(oc.Status.Phase).To(Or(Equal("Reconciling"), Equal("Error"), Equal("Ready")))
+			Expect(oc.Status.ObservedGeneration).To(Equal(oc.Generation))
+
+			time.Sleep(100 * time.Millisecond)
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, typeNamespacedName, oc)).To(Succeed())
+			cond2 := apimeta.FindStatusCondition(oc.Status.Conditions, "Ready")
+			Expect(cond2).NotTo(BeNil())
+			Expect(cond2.Status).To(Equal(metav1.ConditionTrue))
+			Expect(oc.Status.ObservedGeneration).To(Equal(oc.Generation))
+
+			Expect(oc.Status.Phase).To(Equal("Ready"))
+			Expect(oc.Status.Reason).To(Equal("Reconciled"))
+
 		})
 	})
 })

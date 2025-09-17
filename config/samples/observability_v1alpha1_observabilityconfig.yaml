@@ -1,9 +1,11 @@
 apiVersion: observability.shtsukada.dev/v1alpha1
 kind: ObservabilityConfig
 metadata:
+  name: observabilityconfig-sample
   labels:
     app.kubernetes.io/name: cloudnative-observability-operator
     app.kubernetes.io/managed-by: kustomize
-  name: observabilityconfig-sample
 spec:
-  # TODO(user): Add fields here
+  endpoints: "otel-collector.monitoring:4317"
+  samplingPercent: 25
+  metricsEnabled: true
