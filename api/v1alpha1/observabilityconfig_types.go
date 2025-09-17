@@ -20,14 +20,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // ObservabilityConfigSpec defines the desired state of ObservabilityConfig
 type ObservabilityConfigSpec struct {
 	// Example field: endpoint URL of OTLP exporter
-	// +kubebuilder:validation:Pattern=`^https?://`
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:XValidation:rule="(self.matches('^https?://.+')) || (self.matches('^[A-Za-z0-9_.-]+:[0-9]{1,5}$'))",message="endpoint must be http(s) URL or host:port"
 	Endpoint string `json:"endpoint"`
 
 	// Example: sampling ratio percent (0-100)
@@ -50,35 +49,32 @@ type ObservabilityConfigStatus struct {
 	// Reason for last transition
 	// +kubebuilder:validation:MaxLength=1024
 	Reason string `json:"reason,omitempty"`
+
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 // +kubebuilder:resource:path=observabilityconfigs,scope=Namespaced,shortName=obscfg,categories=all
-
-/*
-+kubebuilder:printcolumn:name="Endpoint",type=string,JSONPath=`.spec.endpoint`
-+kubebuilder:printcolumn:name="Sampling",type=string,JSONPath=`.spec.sampling`
-+kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-+kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
-*/
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Endpoint",type=string,JSONPath=`.spec.endpoint`
+// +kubebuilder:printcolumn:name="Sampling",type=integer,JSONPath=`.spec.samplingPercent`
+// +kubebuilder:printcolumn:name="Metrics",type=boolean,JSONPath=`.spec.metricsEnabled`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,priority=1
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // ObservabilityConfig is the Schema for the observabilityconfigs API
-
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 type ObservabilityConfig struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// metadata is a standard object metadata
-	// +optional
+	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// spec defines the desired state of ObservabilityConfig
 	// +required
 	Spec ObservabilityConfigSpec `json:"spec,omitempty"`
 
-	// status defines the observed state of ObservabilityConfig
 	// +optional
 	Status ObservabilityConfigStatus `json:"status,omitempty"`
 }
