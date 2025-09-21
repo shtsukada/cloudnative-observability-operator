@@ -24,12 +24,14 @@ import (
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	observabilityv1alpha1 "github.com/shtsukada/cloudnative-observability-operator/api/v1alpha1"
+	conditions "github.com/shtsukada/cloudnative-observability-operator/internal/shared/conditions"
 )
 
 var _ = Describe("ObservabilityConfig Controller", func() {
@@ -70,8 +72,9 @@ var _ = Describe("ObservabilityConfig Controller", func() {
 		})
 		It("should set Conditions/Phase/ObservedGeneration as expected", func() {
 			r := &ObservabilityConfigReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:   k8sClient,
+				Scheme:   k8sClient.Scheme(),
+				Recorder: record.NewFakeRecorder(32),
 			}
 
 			_, err := r.Reconcile(ctx, reconcile.Request{
@@ -88,19 +91,25 @@ var _ = Describe("ObservabilityConfig Controller", func() {
 			Expect(oc.Status.Phase).To(Or(Equal("Reconciling"), Equal("Error"), Equal("Ready")))
 			Expect(oc.Status.ObservedGeneration).To(Equal(oc.Generation))
 
-			time.Sleep(100 * time.Millisecond)
-			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
-			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: typeNamespacedName})
+				g.Expect(err).NotTo(HaveOccurred())
 
-			Expect(k8sClient.Get(ctx, typeNamespacedName, oc)).To(Succeed())
-			cond2 := apimeta.FindStatusCondition(oc.Status.Conditions, "Ready")
-			Expect(cond2).NotTo(BeNil())
-			Expect(cond2.Status).To(Equal(metav1.ConditionTrue))
-			Expect(oc.Status.ObservedGeneration).To(Equal(oc.Generation))
+				curr := &observabilityv1alpha1.ObservabilityConfig{}
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, curr)).To(Succeed())
 
-			Expect(oc.Status.Phase).To(Equal("Ready"))
-			Expect(oc.Status.Reason).To(Equal("Reconciled"))
+				cond := apimeta.FindStatusCondition(curr.Status.Conditions, "Ready")
+				g.Expect(cond).NotTo(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
+				g.Expect(curr.Status.ObservedGeneration).To(Equal(curr.Generation))
+				g.Expect(curr.Status.Phase).To(Equal("Ready"))
 
+				// Reason は共有語彙（Reconciled だけでなく DeploymentAvailable も許容）
+				g.Expect(curr.Status.Reason).To(Or(
+					Equal("Reconciled"),
+					Equal(conditions.ReasonDeploymentAvailable),
+				))
+			}, 3*time.Second, 200*time.Millisecond).Should(Succeed())
 		})
 	})
 })

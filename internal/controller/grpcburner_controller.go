@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	apiv1alpha1 "github.com/shtsukada/cloudnative-observability-operator/api/v1alpha1"
+	conditions "github.com/shtsukada/cloudnative-observability-operator/internal/shared/conditions"
 )
 
 const finalizerName = "grpcburner.finalizers.observability.shtsukada.dev"
@@ -63,7 +64,7 @@ func (r *GrpcBurnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	r.setCondition(&gb, apiv1alpha1.ConditionProgressing, metav1.ConditionTrue, "Reconciling", "Reconciling desired state")
+	r.setCondition(&gb, apiv1alpha1.ConditionProgressing, metav1.ConditionTrue, conditions.ReasonReconciling, "Reconciling desired state")
 	if err := r.Status().Update(ctx, &gb); err != nil {
 		logger.V(1).Info("status update (progressing) failed", "err", err)
 	}
@@ -73,21 +74,26 @@ func (r *GrpcBurnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	deploy := desiredDeployment(&gb)
 
 	if err := r.createOrUpdate(ctx, &gb, sa, func() error { return nil }); err != nil {
-		return r.fail(&gb, "ServiceAccountApplyFailed", err)
+		return r.fail(&gb, err)
 	}
 	if err := r.createOrUpdate(ctx, &gb, svc, func() error { return nil }); err != nil {
-		return r.fail(&gb, "ServiceApplyFailed", err)
+		return r.fail(&gb, err)
 	}
 	if err := r.createOrUpdate(ctx, &gb, deploy, func() error { return nil }); err != nil {
-		return r.fail(&gb, "DeploymentApplyFailed", err)
+		return r.fail(&gb, err)
 	}
 
 	var d appsv1.Deployment
 	if err := r.Get(ctx, types.NamespacedName{Name: deploy.Name, Namespace: deploy.Namespace}, &d); err == nil {
+		gb.Status.ReadyReplicas = d.Status.ReadyReplicas
+		_ = r.Status().Update(ctx, &gb)
 		if d.Status.ReadyReplicas == ptr.Deref(deploy.Spec.Replicas, 1) {
-			gb.SetCondition(apiv1alpha1.ConditionReady, metav1.ConditionTrue, "AsExpected", "Deployment ready")
+			conditions.Emit(r.Recorder, &gb, corev1.EventTypeNormal, conditions.ReasonDeploymentAvailable, "deployment available: ready=%d", d.Status.ReadyReplicas)
+			gb.SetCondition(apiv1alpha1.ConditionReady, metav1.ConditionTrue, conditions.ReasonDeploymentAvailable, "Deployment ready")
 			gb.SetCondition(apiv1alpha1.ConditionProgressing, metav1.ConditionFalse, "Stable", "Reconcile stable")
 			_ = r.Status().Update(ctx, &gb)
+		} else {
+			conditions.Emit(r.Recorder, &gb, corev1.EventTypeNormal, conditions.ReasonDeploymentUnavailable, "deployment progressing: ready=%d/%d", d.Status.ReadyReplicas, ptr.Deref(deploy.Spec.Replicas, 1))
 		}
 	}
 	return ctrl.Result{}, nil
@@ -128,8 +134,9 @@ func (r *GrpcBurnerReconciler) setCondition(gb *apiv1alpha1.GrpcBurner, cond str
 	gb.SetCondition(cond, status, reason, msg)
 }
 
-func (r *GrpcBurnerReconciler) fail(gb *apiv1alpha1.GrpcBurner, reason string, err error) (ctrl.Result, error) {
-	r.Recorder.Event(gb, corev1.EventTypeWarning, reason, err.Error())
+func (r *GrpcBurnerReconciler) fail(gb *apiv1alpha1.GrpcBurner, err error) (ctrl.Result, error) {
+	reason := conditions.ClassifyApplyError(err)
+	conditions.Emit(r.Recorder, gb, corev1.EventTypeWarning, reason, "apply failed:%v", err)
 	gb.SetCondition(apiv1alpha1.ConditionDegraded, metav1.ConditionTrue, reason, err.Error())
 	gb.SetCondition(apiv1alpha1.ConditionReady, metav1.ConditionFalse, reason, "Not ready")
 	_ = r.Status().Update(context.Background(), gb)
@@ -137,6 +144,7 @@ func (r *GrpcBurnerReconciler) fail(gb *apiv1alpha1.GrpcBurner, reason string, e
 }
 
 func (r *GrpcBurnerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.Recorder = mgr.GetEventRecorderFor("cloudnative-observability-operator")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&apiv1alpha1.GrpcBurner{}).
 		Owns(&appsv1.Deployment{}).

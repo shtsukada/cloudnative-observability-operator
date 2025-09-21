@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,12 +36,14 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	observabilityv1alpha1 "github.com/shtsukada/cloudnative-observability-operator/api/v1alpha1"
+	conditions "github.com/shtsukada/cloudnative-observability-operator/internal/shared/conditions"
 )
 
 // ObservabilityConfigReconciler reconciles a ObservabilityConfig object
 type ObservabilityConfigReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=observability.shtsukada.dev,resources=observabilityconfigs,verbs=get;list;watch;create;update;patch;delete
@@ -71,10 +74,11 @@ func (r *ObservabilityConfigReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	orig := oc.DeepCopy()
 
-	setProgressing(&oc, "Reconciling", "reconcile started")
+	setProgressing(&oc, conditions.ReasonReconciling, "reconcile started")
 
 	if oc.Spec.Endpoint == "" {
-		setDegraded(&oc, "InvalidSpec", "spec.endpoint must not be empty")
+		conditions.Emit(r.Recorder, &oc, corev1.EventTypeWarning, conditions.ReasonErrInvalid, "spec.endpoint must not be empty")
+		setDegraded(&oc, conditions.ReasonErrInvalid, "spec.endpoint must not be empty")
 		oc.Status.ObservedGeneration = oc.Generation
 		if err := r.Status().Patch(ctx, &oc, client.MergeFrom(orig)); err != nil {
 			return ctrl.Result{}, err
@@ -84,21 +88,24 @@ func (r *ObservabilityConfigReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	changed, err := r.applyDesired(ctx, &oc)
 	if err != nil {
-		setDegraded(&oc, "ApplyFailed", err.Error())
+		reason := conditions.ClassifyApplyError(err)
+		conditions.Emit(r.Recorder, &oc, corev1.EventTypeWarning, reason, "apply failed:%v", err)
+		setDegraded(&oc, reason, err.Error())
 		oc.Status.ObservedGeneration = oc.Generation
 		_ = r.Status().Patch(ctx, &oc, client.MergeFrom(orig))
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 	if changed {
-		setProgressing(&oc, "Applying", "changes applied, waiting to settle")
+		conditions.Emit(r.Recorder, &oc, corev1.EventTypeNormal, conditions.ReasonApplySucceeded, "changes applied, waiting to settle")
+		setProgressing(&oc, conditions.ReasonWaitingForDeployment, "changes applied, waiting to settle")
 		oc.Status.ObservedGeneration = oc.Generation
 		if err := r.Status().Patch(ctx, &oc, client.MergeFrom(orig)); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 	}
-
-	setReady(&oc, "Reconciled", "resources are in sync")
+	conditions.Emit(r.Recorder, &oc, corev1.EventTypeNormal, conditions.ReasonDeploymentAvailable, "resources are in sync")
+	setReady(&oc, conditions.ReasonDeploymentAvailable, "resources are in sync")
 
 	if oc.Status.ObservedGeneration != oc.Generation {
 		oc.Status.ObservedGeneration = oc.Generation
@@ -114,6 +121,7 @@ func (r *ObservabilityConfigReconciler) Reconcile(ctx context.Context, req ctrl.
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ObservabilityConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.Recorder = mgr.GetEventRecorderFor("cloudnative-observability-operator")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&observabilityv1alpha1.ObservabilityConfig{}).
 		Named("observabilityconfig").
