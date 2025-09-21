@@ -155,6 +155,9 @@ spec:
                 - Error
                 - Reconciling
                 type: string
+              readyReplicas:
+                format: int32
+                type: integer
               reason:
                 description: Reason for last transition
                 maxLength: 1024
