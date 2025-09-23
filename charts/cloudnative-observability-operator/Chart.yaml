@@ -1,0 +1,14 @@
+apiVersion: v2
+name: cloudnative-observability-operator
+description: Kubernetes Operator (gRPC app mgmt). CRDs bundled.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.26.0-0"
+home: https://github.com/shtsukada/cloudnative-observability-operator
+sources:
+  - https://github.com/shtsukada/cloudnative-observability-operator
+maintainers:
+  - name: shtsukada
+annotations:
+  artifacthub.io/prerelease: "true"

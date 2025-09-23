@@ -39,7 +39,6 @@ Dockerfile.cross
 # Helm / Kubernetes
 # ----------------------------------------
 *.tgz
-charts/
 tmpcharts/
 Chart.lock
 # kubeconfig は通常グローバル .gitignore で管理

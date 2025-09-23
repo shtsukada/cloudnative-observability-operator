@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cno.fullname" . }}-config
+  labels: {{- include "cno.labels" . | nindent 4 }}
+data:
+  MANAGEDAPP_IMAGE: {{ printf "%s" .Values.managedApp.image | quote }}
+  MANAGEDAPP_TAG: {{ printf "%s" .Values.managedApp.tag | quote }}
+  MANAGEDAPP_REPLICAS: {{ printf "%v" .Values.managedApp.replicas | quote }}
+  MANAGEDAPP_OTLP_ENDPOINT: {{ printf "%s" .Values.managedApp.otlpEndpoint | quote }}
+  MANAGEDAPP_ENV_JSON: {{ toJson .Values.managedApp.env | quote }}
+  MANAGEDAPP_PORTS_JSON: {{ toJson .Values.managedApp.ports | quote }}
