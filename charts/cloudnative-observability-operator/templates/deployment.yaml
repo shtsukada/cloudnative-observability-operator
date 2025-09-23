@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cno.fullname" . }}
+  labels: {{- include "cno.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cno.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cno.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ default (include "cno.fullname" .) .Values.serviceAccount.name }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: manager
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--leader-elect={{ .Values.leaderElection.enabled }}"
+            - "--metrics-bind-address=:8080"
+            - "--health-probe-bind-address=:8081"
+            - "--zap-encoder=json"
+            - "--zap-log-level={{ (index (first .Values.operator.env) "value") | default "info" }}"
+          envFrom:
+            - configMapRef:
+                name: {{ include "cno.fullname" . }}-config
+          env:
+            {{- toYaml .Values.operator.env | nindent 12 }}
+          ports:
+            - { name: metrics, containerPort: 8080 }
+            - { name: healthz, containerPort: 8081 }
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8081 }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8081 }
+            initialDelaySeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
