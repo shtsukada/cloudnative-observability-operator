@@ -1,27 +1,71 @@
-{{- if .Values.rbac.create }}
+{{- if not .Values.rbac.namespaced }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{include "cno.fullname" . }}
-  labels: {{- include "cno.labels" . | nindent 4 }}
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
 rules:
+  # 自CRD（参照） + status/finalizers 更新のみ
   - apiGroups: ["observability.shtsukada.dev"]
-    resources:
-      - grpcburners
-      - grpcburners/status
-      - grpcburners/finalizers
-      - observabilityconfigs
-      - observabilityconfigs/status
-      - observabilityconfigs/finalizers
+    resources: ["grpcburners","grpcburners/status","grpcburners/finalizers","observabilityconfigs","observabilityconfigs/status","observabilityconfigs/finalizers"]
+    verbs: ["get","list","watch"]
+  - apiGroups: ["observability.shtsukada.dev"]
+    resources: ["grpcburners/status","observabilityconfigs/status"]
+    verbs: ["update","patch"]
+  - apiGroups: ["observability.shtsukada.dev"]
+    resources: ["grpcburners/finalizers","observabilityconfigs/finalizers"]
+    verbs: ["update"]
+
+  # 管理対象（必要最小）
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get","list","watch","create","update","patch","delete"]
+  - apiGroups: [""]
+    resources: ["services","configmaps"]
     verbs: ["get","list","watch","create","update","patch","delete"]
 
-  - apiGroups: ["apps"]
-    resources: ["deployments","replicasets"]
-    verbs: ["*"]
+  # pods は参照のみ
   - apiGroups: [""]
-    resources: ["pods","services","endpoints","events","configmaps","secrets"]
-    verbs: ["*"]
+    resources: ["pods"]
+    verbs: ["get","list","watch"]
+
+  # events 記録
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create","patch"]
+
+  # leader election
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
-    verbs: ["*"]
+    verbs: ["get","list","watch","create","update","patch"]
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: ["observability.shtsukada.dev"]
+    resources: ["grpcburners","grpcburners/status","grpcburners/finalizers","observabilityconfigs","observabilityconfigs/status","observabilityconfigs/finalizers"]
+    verbs: ["get","list","watch"]
+  - apiGroups: ["observability.shtsukada.dev"]
+    resources: ["grpcburners/status","observabilityconfigs/status"]
+    verbs: ["update","patch"]
+  - apiGroups: ["observability.shtsukada.dev"]
+    resources: ["grpcburners/finalizers","observabilityconfigs/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get","list","watch","create","update","patch","delete"]
+  - apiGroups: [""]
+    resources: ["services","configmaps"]
+    verbs: ["get","list","watch","create","update","patch","delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get","list","watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create","patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get","list","watch","create","update","patch"]
 {{- end }}

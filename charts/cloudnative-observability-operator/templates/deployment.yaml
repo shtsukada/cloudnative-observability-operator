@@ -15,14 +15,21 @@ spec:
     spec:
       serviceAccountName: {{ default (include "cno.fullname" .) .Values.serviceAccount.name }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        runAsNonRoot: {{ .Values.security.podSecurityContext.runAsNonRoot }}
+        {{- if .Values.security.podSecurityContext.enabledFixedIDs }}
+        runAsUser: {{ .Values.security.podSecurityContext.runAsUser }}
+        runAsGroup: {{ .Values.security.podSecurityContext.runAsGroup }}
+        fsGroup: {{ .Values.security.podSecurityContext.fsGroup }}
+        {{- end }}
+        seccompProfile:
+          type: {{ .Values.security.podSecurityContext.seccompProfile.type }}
       containers:
         - name: manager
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - "--leader-elect={{ .Values.leaderElection.enabled }}"
-            - "--metrics-bind-address=:8080"
+            - "--metrics-bind-address=:{{ .Values.networkPolicy.metricsPort }}"
             - "--health-probe-bind-address=:8081"
             - "--zap-encoder=json"
             - "--zap-log-level={{ (index (first .Values.operator.env) "value") | default "info" }}"
@@ -32,8 +39,10 @@ spec:
           env:
             {{- toYaml .Values.operator.env | nindent 12 }}
           ports:
-            - { name: metrics, containerPort: 8080 }
-            - { name: healthz, containerPort: 8081 }
+            - name: metrics
+              containerPort: {{ .Values.networkPolicy.metricsPort }}
+            - name: healthz
+              containerPort: 8081
           readinessProbe:
             httpGet: { path: /readyz, port: 8081 }
             initialDelaySeconds: 5
@@ -43,4 +52,16 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            readOnlyRootFilesystem: {{ .Values.security.containerSecurityContext.readOnlyRootFilesystem }}
+            allowPrivilegeEscalation: {{ .Values.security.containerSecurityContext.allowPrivilegeEscalation }}
+            capabilities:
+              drop:
+              {{- range .Values.security.containerSecurityContext.capabilities.drop }}
+                - {{ . }}
+              {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

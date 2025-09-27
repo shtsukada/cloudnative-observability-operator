@@ -1,0 +1,75 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudnative-observability-operator.fullname" . }}-default-deny
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "cloudnative-observability-operator.name" . }}
+  policyTypes: ["Ingress","Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudnative-observability-operator.fullname" . }}-allow-metrics
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "cloudnative-observability-operator.name" . }}
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.prometheusNamespace | quote }}
+      ports:
+        - port: {{ .Values.networkPolicy.metricsPort }}
+          protocol: TCP
+---
+{{- if .Values.networkPolicy.otlp.inCluster.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudnative-observability-operator.fullname" . }}-allow-otlp-egress-incluster
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "cloudnative-observability-operator.name" . }}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.otlp.inCluster.namespace | quote }}
+          podSelector:
+{{ toYaml .Values.networkPolicy.otlp.inCluster.podSelector | indent 12 }}
+      ports:
+        - port: {{ .Values.networkPolicy.otlp.inCluster.port }}
+          protocol: TCP
+  policyTypes: ["Egress"]
+{{- end }}
+---
+{{- if .Values.networkPolicy.otlp.external.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cloudnative-observability-operator.fullname" . }}-allow-otlp-egress-external
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "cloudnative-observability-operator.name" . }}
+  egress:
+    - to:
+      {{- range $cidr := .Values.networkPolicy.otlp.external.ipBlockCIDRs }}
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+      {{- end }}
+      ports:
+        - port: {{ .Values.networkPolicy.otlp.external.port }}
+          protocol: TCP
+  policyTypes: ["Egress"]
+{{- end }}
+{{- end }}
