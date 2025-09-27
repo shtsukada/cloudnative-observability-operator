@@ -6,7 +6,7 @@ image:
 replicaCount: 1
 
 resources:
-  requests: { cpu: 50m,memory: 128Mi }
+  requests: { cpu: 50m, memory: 128Mi }
   limits: { cpu: 300m, memory: 512Mi }
 
 operator:
@@ -41,6 +41,7 @@ serviceMonitor:
 
 rbac:
   create: true
+  namespaced: false
 
 serviceAccount:
   create: true
@@ -52,12 +53,34 @@ installCRDs: true
 leaderElection:
   enabled: true
 
-podSecurityContext:
-  runAsNonRoot: true
-  seccompProfile: { type: RuntimeDefault }
+security:
+  podSecurityContext:
+    runAsNonRoot: true
+    enabledFixedIDs: false
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
 
-securityContext:
-  allowPrivilegeEscalation: false
-  readOnlyRootFilesystem: true
-  capabilities:
-    drop: ["ALL"]
+networkPolicy:
+  enabled: true
+  prometheusNamespace: "monitoring"
+  metricsPort: 8080
+  otlp:
+    inCluster:
+      enabled: true
+      namespace: "monitoring"
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: "otel-collector"
+      port: 4317
+    external:
+      enabled: false
+      ipBlockCIDRs: ["0.0.0.0/0"]
+      port: 4317

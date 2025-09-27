@@ -1,15 +1,28 @@
-{{- if .Values.rbac.create }}
+{{- if not .Values.rbac.namespaced }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "cno.fullname" . }}
-  labels: {{- include "cno.labels" . | nindent 4 }}
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "cno.fullname" . }}
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
 subjects:
   - kind: ServiceAccount
-    name: {{ default (include "cno.fullname" .) .Values.serviceAccount.name }}
+    name: {{ include "cloudnative-observability-operator.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- else }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "cloudnative-observability-operator.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
 {{- end }}
