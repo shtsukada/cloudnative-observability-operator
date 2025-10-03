@@ -9,11 +9,6 @@ resources:
   requests: { cpu: 50m, memory: 128Mi }
   limits: { cpu: 300m, memory: 512Mi }
 
-operator:
-  env:
-    - name: ZAP_LOG_LEVEL
-      value: "info"
-
 managedApp:
   image: ghcr.io/shtsukada/grpc-burner
   tag: "v0.1.0"
@@ -84,3 +79,17 @@ networkPolicy:
       enabled: false
       ipBlockCIDRs: ["0.0.0.0/0"]
       port: 4317
+
+telemetry:
+  metricsPort:
+    enabled: true
+  logs:
+    json: true
+    level: info
+    sample: false
+  traces:
+    enabled: false
+    endpoint: "http://otel-collector.monitoring:4317"
+    sampler: "parentbased_treceidratio"
+    sampleArg: 0.1
+    serviceName: "cloudnative-observability-operator"

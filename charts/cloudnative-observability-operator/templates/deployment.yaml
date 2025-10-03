@@ -38,6 +38,30 @@ spec:
                 name: {{ include "cno.fullname" . }}-config
           env:
             {{- toYaml .Values.operator.env | nindent 12 }}
+            - name: ZAP_LOG_JSON
+              value: "{{ ternary "true" "false" .Values.telemetry.logs.json }}"
+            - name: ZAP_LOG_LEVEL
+              value: "{{ .Values.telemetry.logs.level | default "info" }}"
+            - name: ZAP_SAMPLE
+              value: "{{ ternary "true" "false" .Values.telemetry.logs.sample }}"
+            - name: OTEL_TRACES_ENABLED
+              value: "{{ ternary "true" "false" .Values.telemetry.traces.enabled }}"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "{{ .Values.telemetry.traces.endpoint }}"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_TRACES_SAMPLER
+              value: "{{ .Values.telemetry.traces.sampler }}"
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: "{{ .Values.telemetry.traces.samplerArg | toString }}"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.name={{ .Values.telemetry.traces.serviceName }},k8s.namespace=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME)"
+            - name: OTEL_SERVICE_NAME
+              value: "{{ .Values.telemetry.traces.serviceName }}"
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
           ports:
             - name: metrics
               containerPort: {{ .Values.networkPolicy.metricsPort }}

@@ -19,6 +19,7 @@ import (
 
 	apiv1alpha1 "github.com/shtsukada/cloudnative-observability-operator/api/v1alpha1"
 	conditions "github.com/shtsukada/cloudnative-observability-operator/internal/shared/conditions"
+	tel "github.com/shtsukada/cloudnative-observability-operator/internal/shared/telemetry"
 )
 
 const finalizerName = "grpcburner.finalizers.observability.shtsukada.dev"
@@ -145,12 +146,13 @@ func (r *GrpcBurnerReconciler) fail(gb *apiv1alpha1.GrpcBurner, err error) (ctrl
 
 func (r *GrpcBurnerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("cloudnative-observability-operator")
+	wrapped := tel.WrapReconciler("GrpcBurner", r)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&apiv1alpha1.GrpcBurner{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ServiceAccount{}).
-		Complete(r)
+		Complete(wrapped)
 }
 
 func mergeMap(dst, src map[string]string) map[string]string {
