@@ -37,6 +37,7 @@ import (
 
 	observabilityv1alpha1 "github.com/shtsukada/cloudnative-observability-operator/api/v1alpha1"
 	conditions "github.com/shtsukada/cloudnative-observability-operator/internal/shared/conditions"
+	tel "github.com/shtsukada/cloudnative-observability-operator/internal/shared/telemetry"
 )
 
 // ObservabilityConfigReconciler reconciles a ObservabilityConfig object
@@ -122,10 +123,13 @@ func (r *ObservabilityConfigReconciler) Reconcile(ctx context.Context, req ctrl.
 // SetupWithManager sets up the controller with the Manager.
 func (r *ObservabilityConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("cloudnative-observability-operator")
+	wrapped := tel.WrapReconciler("ObservabilityConfig", r)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&observabilityv1alpha1.ObservabilityConfig{}).
+		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.ConfigMap{}).
 		Named("observabilityconfig").
-		Complete(r)
+		Complete(wrapped)
 }
 
 func setCondition(oc *observabilityv1alpha1.ObservabilityConfig, t string, status metav1.ConditionStatus, reason, msg string) {
