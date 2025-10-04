@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "cno.fullname" . }}
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
   labels:
-    {{- include "cno.labels" . | nindent 4 }}
+    {{- include "cloudnative-observability-operator.labels" . | nindent 4 }}
 spec:
   type: ClusterIP
   selector:
-    {{- include "cno.selectorLabels" . | nindent 4 }}
+    {{- include "cloudnative-observability-operator.selectorLabels" . | nindent 4 }}
   ports:
     - name: metrics
       port: 8080

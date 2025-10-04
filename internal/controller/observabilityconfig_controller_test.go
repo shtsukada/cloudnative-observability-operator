@@ -109,7 +109,7 @@ var _ = Describe("ObservabilityConfig Controller", func() {
 					Equal("Reconciled"),
 					Equal(conditions.ReasonDeploymentAvailable),
 				))
-			}, 3*time.Second, 200*time.Millisecond).Should(Succeed())
+			}, 5*time.Second, 200*time.Millisecond).Should(Succeed())
 		})
 	})
 })

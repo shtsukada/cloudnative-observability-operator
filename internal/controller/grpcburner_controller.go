@@ -47,7 +47,7 @@ func (r *GrpcBurnerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	if !gb.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !gb.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&gb, finalizerName) {
 			controllerutil.RemoveFinalizer(&gb, finalizerName)
 			if err := r.Update(ctx, &gb); err != nil {
@@ -155,15 +155,15 @@ func (r *GrpcBurnerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(wrapped)
 }
 
-func mergeMap(dst, src map[string]string) map[string]string {
-	if dst == nil && src == nil {
-		return nil
-	}
-	if dst == nil {
-		dst = map[string]string{}
-	}
-	for k, v := range src {
-		dst[k] = v
-	}
-	return dst
-}
+// func mergeMap(dst, src map[string]string) map[string]string {
+// 	if dst == nil && src == nil {
+// 		return nil
+// 	}
+// 	if dst == nil {
+// 		dst = map[string]string{}
+// 	}
+// 	for k, v := range src {
+// 		dst[k] = v
+// 	}
+// 	return dst
+// }

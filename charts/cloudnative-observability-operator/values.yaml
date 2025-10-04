@@ -93,3 +93,9 @@ telemetry:
     sampler: "parentbased_treceidratio"
     sampleArg: 0.1
     serviceName: "cloudnative-observability-operator"
+  metrics:
+    enabled: false        # ← デフォルトで無効（必要なとき true）
+    portName: https       # Service のメトリクス用ポート名に合わせる
+    scheme: https
+    interval: 30s
+    extraLabels: {}

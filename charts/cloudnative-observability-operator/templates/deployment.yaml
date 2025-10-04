@@ -1,91 +1,94 @@
+{{- /*
+Deployment template (nil-safe)
+
+- 依存ヘルパーは _helpers.tpl の
+  cloudnative-observability-operator.{fullname,labels,selectorLabels,serviceAccountName}
+- .Values が未定義/型不一致でも lint で落ちないよう、hasKey/kindIs/ternary でガード
+*/ -}}
+
+{{- $vals := .Values -}}
+
+{{- /* replicaCount */ -}}
+{{- $replicas := (hasKey $vals "replicaCount") | ternary $vals.replicaCount 1 -}}
+
+{{- /* image */ -}}
+{{- $img := (and (hasKey $vals "image") (kindIs "map[string]interface {}" $vals.image)) | ternary $vals.image (dict) -}}
+{{- $repo := (hasKey $img "repository") | ternary $img.repository "ghcr.io/stsukada/cloudnative-observability-operator" -}}
+{{- $tag  := (hasKey $img "tag")        | ternary $img.tag        .Chart.AppVersion -}}
+{{- $pull := (hasKey $img "pullPolicy") | ternary $img.pullPolicy "IfNotPresent" -}}
+
+{{- /* operator (env/args/resources など) */ -}}
+{{- $op := (and (hasKey $vals "operator") (kindIs "map[string]interface {}" $vals.operator)) | ternary $vals.operator (dict) -}}
+{{- $env := (and (hasKey $op "env") (kindIs "[]interface {}" $op.env)) | ternary $op.env (list) -}}
+{{- $args := (and (hasKey $op "args") (kindIs "[]interface {}" $op.args)) | ternary $op.args (list) -}}
+{{- $res := (and (hasKey $op "resources") (kindIs "map[string]interface {}" $op.resources)) | ternary $op.resources (dict) -}}
+{{- $sec := (and (hasKey $op "securityContext") (kindIs "map[string]interface {}" $op.securityContext)) | ternary $op.securityContext (dict) -}}
+{{- $podsec := (and (hasKey $op "podSecurityContext") (kindIs "map[string]interface {}" $op.podSecurityContext)) | ternary $op.podSecurityContext (dict) -}}
+{{- $imagePullSecrets := (and (hasKey $vals "imagePullSecrets") (kindIs "[]interface {}" $vals.imagePullSecrets)) | ternary $vals.imagePullSecrets (list) -}}
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "cno.fullname" . }}
-  labels: {{- include "cno.labels" . | nindent 4 }}
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
+  labels:
+    {{- include "cloudnative-observability-operator.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ $replicas }}
   selector:
     matchLabels:
-      {{- include "cno.selectorLabels" . | nindent 6 }}
+      {{- include "cloudnative-observability-operator.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "cno.selectorLabels" . | nindent 8 }}
+        {{- include "cloudnative-observability-operator.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ default (include "cno.fullname" .) .Values.serviceAccount.name }}
+      serviceAccountName: {{ include "cloudnative-observability-operator.serviceAccountName" . }}
+      {{- with $imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $podsec }}
       securityContext:
-        runAsNonRoot: {{ .Values.security.podSecurityContext.runAsNonRoot }}
-        {{- if .Values.security.podSecurityContext.enabledFixedIDs }}
-        runAsUser: {{ .Values.security.podSecurityContext.runAsUser }}
-        runAsGroup: {{ .Values.security.podSecurityContext.runAsGroup }}
-        fsGroup: {{ .Values.security.podSecurityContext.fsGroup }}
-        {{- end }}
-        seccompProfile:
-          type: {{ .Values.security.podSecurityContext.seccompProfile.type }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: manager
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args:
-            - "--leader-elect={{ .Values.leaderElection.enabled }}"
-            - "--metrics-bind-address=:{{ .Values.networkPolicy.metricsPort }}"
-            - "--health-probe-bind-address=:8081"
-            - "--zap-encoder=json"
-            - "--zap-log-level={{ (index (first .Values.operator.env) "value") | default "info" }}"
-          envFrom:
-            - configMapRef:
-                name: {{ include "cno.fullname" . }}-config
-          env:
-            {{- toYaml .Values.operator.env | nindent 12 }}
-            - name: ZAP_LOG_JSON
-              value: "{{ ternary "true" "false" .Values.telemetry.logs.json }}"
-            - name: ZAP_LOG_LEVEL
-              value: "{{ .Values.telemetry.logs.level | default "info" }}"
-            - name: ZAP_SAMPLE
-              value: "{{ ternary "true" "false" .Values.telemetry.logs.sample }}"
-            - name: OTEL_TRACES_ENABLED
-              value: "{{ ternary "true" "false" .Values.telemetry.traces.enabled }}"
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "{{ .Values.telemetry.traces.endpoint }}"
-            - name: OTEL_EXPORTER_OTLP_PROTOCOL
-              value: "grpc"
-            - name: OTEL_TRACES_SAMPLER
-              value: "{{ .Values.telemetry.traces.sampler }}"
-            - name: OTEL_TRACES_SAMPLER_ARG
-              value: "{{ .Values.telemetry.traces.samplerArg | toString }}"
-            - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "service.name={{ .Values.telemetry.traces.serviceName }},k8s.namespace=$(POD_NAMESPACE),k8s.pod.name=$(POD_NAME)"
-            - name: OTEL_SERVICE_NAME
-              value: "{{ .Values.telemetry.traces.serviceName }}"
-            - name: POD_NAME
-              valueFrom: { fieldRef: { fieldPath: metadata.name } }
-            - name: POD_NAMESPACE
-              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+          image: {{ printf "%s:%s" $repo $tag | quote }}
+          imagePullPolicy: {{ $pull }}
           ports:
-            - name: metrics
-              containerPort: {{ .Values.networkPolicy.metricsPort }}
-            - name: healthz
+            # controller-runtime metrics (デフォルト https/8443)
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+            # health probe (kubebuilder 既定 8081)
+            - name: health
               containerPort: 8081
-          readinessProbe:
-            httpGet: { path: /readyz, port: 8081 }
-            initialDelaySeconds: 5
-          livenessProbe:
-            httpGet: { path: /healthz, port: 8081 }
-            initialDelaySeconds: 10
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+              protocol: TCP
+          args:
+            {{- if $args }}
+            {{- toYaml $args | nindent 12 }}
+            {{- else }}
+            - --metrics-bind-address=:8443
+            - --health-probe-bind-address=:8081
+            {{- end }}
+          {{- with $env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sec }}
           securityContext:
-            readOnlyRootFilesystem: {{ .Values.security.containerSecurityContext.readOnlyRootFilesystem }}
-            allowPrivilegeEscalation: {{ .Values.security.containerSecurityContext.allowPrivilegeEscalation }}
-            capabilities:
-              drop:
-              {{- range .Values.security.containerSecurityContext.capabilities.drop }}
-                - {{ . }}
-              {{- end }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $res }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
-            - name: tmp
-              mountPath: /tmp
+            - name: operator-config
+              mountPath: /etc/operator
+              readOnly: true
       volumes:
-        - name: tmp
-          emptyDir: {}
+        - name: operator-config
+          configMap:
+            name: {{ include "cloudnative-observability-operator.fullname" . }}-config
+            optional: true

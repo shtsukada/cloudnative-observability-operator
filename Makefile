@@ -43,7 +43,7 @@ all: build
 
 .PHONY: help
 help: ## Display this help.
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Development
 
@@ -151,6 +151,18 @@ docker-buildx-amd64: ## Build docker image (linux/amd64) with buildx; :latest is
 	@if [ "$(VERSION)" = "latest" ]; then echo "ERROR: :latest is forbidden. specify VERSION=SemVer"; exit 2; fi
 	$(CONTAINER_TOOL) buildx build --platform linux/amd64 --build-arg GOOS=$(GOOS) --build-arg GOARCH=$(GOARCH) -t $(IMG) --load .
 
+# --- Added: CI 用 no-push ビルド（linux/amd64 固定） ------------------------
+.PHONY: docker-buildx-ci
+docker-buildx-ci: ## Build docker image (linux/amd64) for CI check only (no push)
+	@[ -n "$(IMG_REPO)" ] || (echo "IMG_REPO not set"; exit 2)
+	$(CONTAINER_TOOL) buildx build \
+		--platform linux/amd64 \
+		-f Dockerfile \
+		-t $(IMG_REPO):ci-test \
+		--build-arg GOOS=$(GOOS) \
+		--build-arg GOARCH=$(GOARCH) \
+		--load .
+
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
@@ -194,6 +206,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+HELM ?= helm  # <-- Added: helm binary
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.6.0
@@ -284,3 +297,22 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef
+
+##@ Helm / CI contracts --------------------------------------------------------
+
+CHART_DIR ?= charts/cloudnative-observability-operator
+
+.PHONY: helm-lint
+helm-lint: ## Lint Helm chart with strict mode
+	@$(HELM) lint $(CHART_DIR) --strict
+
+.PHONY: helm-contracts
+helm-contracts: ## Enforce project contracts (no :latest, version==appVersion)
+	@bash hack/verify-no-latest.sh
+	@bash hack/verify-chart-version.sh $(CHART_DIR)
+
+##@ CI shortcut ---------------------------------------------------------------
+
+.PHONY: ci-all
+ci-all: lint test helm-lint helm-contracts docker-buildx-ci ## Run all CI checks locally
+	@echo "CI all checks passed."

@@ -1,8 +1,8 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "cno.fullname" . }}-config
-  labels: {{- include "cno.labels" . | nindent 4 }}
+  name: {{ include "cloudnative-observability-operator.fullname" . }}-config
+  labels: {{- include "cloudnative-observability-operator.labels" . | nindent 4 }}
 data:
   MANAGEDAPP_IMAGE: {{ printf "%s" .Values.managedApp.image | quote }}
   MANAGEDAPP_TAG: {{ printf "%s" .Values.managedApp.tag | quote }}
