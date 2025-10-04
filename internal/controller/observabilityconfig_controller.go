@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+/* ...ヘッダはそのまま... */
+
 package controller
 
 import (
@@ -53,15 +55,6 @@ type ObservabilityConfigReconciler struct {
 // +kubebuilder:rbac:groups="",resources=services;configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;statefulsets,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ObservabilityConfig object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *ObservabilityConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -89,6 +82,7 @@ func (r *ObservabilityConfigReconciler) Reconcile(ctx context.Context, req ctrl.
 
 	changed, err := r.applyDesired(ctx, &oc)
 	if err != nil {
+		// ここは今のままでOK（Degradedにして返す）
 		reason := conditions.ClassifyApplyError(err)
 		conditions.Emit(r.Recorder, &oc, corev1.EventTypeWarning, reason, "apply failed:%v", err)
 		setDegraded(&oc, reason, err.Error())
@@ -96,6 +90,14 @@ func (r *ObservabilityConfigReconciler) Reconcile(ctx context.Context, req ctrl.
 		_ = r.Status().Patch(ctx, &oc, client.MergeFrom(orig))
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
+
+	// ★ここで「適用成功」を即座に Ready=True として反映（Reason は文字列リテラルで "Reconciled"）
+	setReady(&oc, "Reconciled", "reconciled")
+	oc.Status.ObservedGeneration = oc.Generation
+	if err := r.Status().Patch(ctx, &oc, client.MergeFrom(orig)); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	if changed {
 		conditions.Emit(r.Recorder, &oc, corev1.EventTypeNormal, conditions.ReasonApplySucceeded, "changes applied, waiting to settle")
 		setProgressing(&oc, conditions.ReasonWaitingForDeployment, "changes applied, waiting to settle")
@@ -105,6 +107,8 @@ func (r *ObservabilityConfigReconciler) Reconcile(ctx context.Context, req ctrl.
 		}
 		return ctrl.Result{RequeueAfter: 2 * time.Second}, nil
 	}
+
+	// ここに来るのは「今回の Reconcile で変更が不要」= 安定化した状態。
 	conditions.Emit(r.Recorder, &oc, corev1.EventTypeNormal, conditions.ReasonDeploymentAvailable, "resources are in sync")
 	setReady(&oc, conditions.ReasonDeploymentAvailable, "resources are in sync")
 
@@ -235,7 +239,8 @@ func (r *ObservabilityConfigReconciler) applyDesired(ctx context.Context, oc *ob
 	wantDep := r.desiredDeployment(oc)
 	haveDep := &appsv1.Deployment{ObjectMeta: wantDep.ObjectMeta}
 
-	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, haveDep, func() error {
+	// CreateOrPatch は “変化が無ければ OperationResultNone”
+	op, err := controllerutil.CreateOrPatch(ctx, r.Client, haveDep, func() error {
 		if err := controllerutil.SetControllerReference(oc, haveDep, r.Scheme); err != nil {
 			return err
 		}
@@ -249,14 +254,17 @@ func (r *ObservabilityConfigReconciler) applyDesired(ctx context.Context, oc *ob
 	wantSvc := r.desiredService(oc)
 	haveSvc := &corev1.Service{ObjectMeta: wantSvc.ObjectMeta}
 
-	op2, err := controllerutil.CreateOrUpdate(ctx, r.Client, haveSvc, func() error {
+	op2, err := controllerutil.CreateOrPatch(ctx, r.Client, haveSvc, func() error {
 		if err := controllerutil.SetControllerReference(oc, haveSvc, r.Scheme); err != nil {
 			return err
 		}
 
+		// ClusterIP は不変なので保持
 		clusterIP := haveSvc.Spec.ClusterIP
 		clusterIPs := haveSvc.Spec.ClusterIPs
+
 		r.mutateService(haveSvc, wantSvc)
+
 		haveSvc.Spec.ClusterIP = clusterIP
 		if len(clusterIPs) > 0 {
 			haveSvc.Spec.ClusterIPs = clusterIPs
@@ -267,11 +275,12 @@ func (r *ObservabilityConfigReconciler) applyDesired(ctx context.Context, oc *ob
 		return false, err
 	}
 
-	changed := (op != controllerutil.OperationResultNone || op2 != controllerutil.OperationResultNone)
+	changed := (op != controllerutil.OperationResultNone) || (op2 != controllerutil.OperationResultNone)
 	return changed, nil
 }
 
 func (r *ObservabilityConfigReconciler) mutateDeployment(have, want *appsv1.Deployment) {
+	// ※ Deployment の Selector は不変なので “既存と同じ値”以外にはしない前提で代入
 	have.Labels = want.Labels
 	have.Spec.Selector = want.Spec.Selector
 	have.Spec.Replicas = want.Spec.Replicas

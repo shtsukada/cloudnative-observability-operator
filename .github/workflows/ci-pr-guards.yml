@@ -1,0 +1,50 @@
+name: CI PR Guards
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [ feature/ci-pr-guards ]
+
+jobs:
+  ci:
+    name: make ci-all
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Setup Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Cache envtest binaries
+        id: cache-envtest
+        uses: actions/cache@v4
+        with:
+          path: bin/k8s
+          key: envtest-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+
+      - name: Make tools (golangci-lint, controller-gen, kustomize, etc.)
+        run: make tools
+
+      - name: Run CI suite
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: 0
+        run: make ci-all

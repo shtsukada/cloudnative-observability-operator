@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 
 	"github.com/go-logr/zapr"
@@ -80,6 +81,14 @@ func newZapLogger() *zap.Logger {
 }
 
 func main() {
+	if err := run(); err != nil {
+		// ここでは defer は使わない
+		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	var metricsAddr string
 	var probeAddr string
 	var enableLeaderElection bool
@@ -89,10 +98,15 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election for controller manager.")
 	flag.Parse()
 
+	// ロガー初期化と controller-runtime への設定
 	zl := newZapLogger()
-	defer zl.Sync()
+	defer func() {
+		// errcheck 対応：戻り値は明示破棄
+		_ = zl.Sync()
+	}()
 	ctrl.SetLogger(zapr.NewLogger(zl))
 
+	// Manager 構築
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
@@ -104,16 +118,20 @@ func main() {
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
+		return err
 	}
 
+	// Tracer 初期化（shutdown は必ず実行される）
 	shutdown, err := tel.InitTracer(context.Background())
 	if err != nil {
 		setupLog.Error(err, "failed to init tracer")
-		os.Exit(1)
+		return err
 	}
-	defer func() { _ = shutdown(context.Background()) }()
+	defer func() {
+		_ = shutdown(context.Background())
+	}()
 
+	// コントローラ登録
 	{
 		gb := &internalcontrollers.GrpcBurnerReconciler{
 			Client:   mgr.GetClient(),
@@ -122,10 +140,9 @@ func main() {
 		}
 		if err := gb.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "GrpcBurner")
-			os.Exit(1)
+			return err
 		}
 	}
-
 	{
 		oc := &internalcontrollers.ObservabilityConfigReconciler{
 			Client:   mgr.GetClient(),
@@ -134,22 +151,24 @@ func main() {
 		}
 		if err := oc.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "ObservabilityConfig")
-			os.Exit(1)
+			return err
 		}
 	}
 
+	// ヘルスチェック
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
+		return err
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
+		return err
 	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+		return err
 	}
+	return nil
 }

@@ -65,7 +65,7 @@ func InitTracer(ctx context.Context) (func(context.Context) error, error) {
 	sampler := envStr("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
 	arg := envFloat("OTEL_TRACES_SAMPLER_ARG", 0.1)
 
-	var s sdktrace.Sampler = sdktrace.ParentBased(sdktrace.TraceIDRatioBased(arg))
+	s := sdktrace.ParentBased(sdktrace.TraceIDRatioBased(arg))
 	switch sampler {
 	case "always_on":
 		s = sdktrace.AlwaysSample()

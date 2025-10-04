@@ -1,30 +1,45 @@
-{{- if and .Values.serviceMonitor.enabled .Values.telemetry.metrics.enabled }}
+{{- /*
+Render ServiceMonitor only when:
+  1) telemetry.metrics.enabled == true（途中のキーが無い/型が違う場合は false 扱い）
+  2) The CRD monitoring.coreos.com/v1 exists
+*/ -}}
+
+{{- $vals := .Values -}}
+
+{{- /* telemetry が map のときだけ採用、違えば空 dict */ -}}
+{{- $tele := (and (hasKey $vals "telemetry") (kindIs "map[string]interface {}" $vals.telemetry)) | ternary $vals.telemetry (dict) -}}
+
+{{- /* metrics も同様にガード */ -}}
+{{- $metrics := (and (hasKey $tele "metrics") (kindIs "map[string]interface {}" $tele.metrics)) | ternary $tele.metrics (dict) -}}
+
+{{- /* enabled が存在すればその値、無ければ false */ -}}
+{{- $enabled := (hasKey $metrics "enabled") | ternary $metrics.enabled false -}}
+
+{{- /* デフォルト付きの取り出し */ -}}
+{{- $portName := (hasKey $metrics "portName") | ternary $metrics.portName "https" -}}
+{{- $scheme   := (hasKey $metrics "scheme")   | ternary $metrics.scheme   "https" -}}
+{{- $interval := (hasKey $metrics "interval") | ternary $metrics.interval "30s"  -}}
+{{- $extra    := (and (hasKey $metrics "extraLabels") (kindIs "map[string]interface {}" $metrics.extraLabels)) | ternary $metrics.extraLabels (dict) -}}
+
+{{- if and $enabled (has "monitoring.coreos.com/v1" .Capabilities.APIVersions) }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "cno.fullname" . }}
+  name: {{ include "cloudnative-observability-operator.fullname" . }}
   labels:
-    {{- include "cno.labels" . | nindent 4 }}
-    {{- with .Values.serviceMonitor.additionalLabels }}
+    {{- include "cloudnative-observability-operator.labels" . | nindent 4 }}
+    {{- with $extra }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
   selector:
     matchLabels:
-      {{- include "cno.selectorLabels" . | nindent 6 }}
+      {{- include "cloudnative-observability-operator.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
   endpoints:
-    - port: {{ default "metrics" .Values.service.portName }}
-      path: {{ default "/metrics" .Values.serviceMonitor.path }}
-      interval: {{ .Values.serviceMonitor.interval }}
-      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
-      scheme: {{ default "http" .Values.serviceMonitor.scheme }}
-      honorLabels: {{ default true .Values.serviceMonitor.honorLabels }}
-      {{- with .Values.serviceMonitor.metricRelabelings }}
-      metricRelabelings:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.serviceMonitor.relabelings }}
-      relabelings:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+    - port: {{ $portName | quote }}
+      scheme: {{ $scheme | quote }}
+      interval: {{ $interval | quote }}
 {{- end }}
