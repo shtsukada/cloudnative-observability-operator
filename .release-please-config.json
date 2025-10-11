@@ -1,0 +1,21 @@
+{
+  "release-type": "simple",
+  "bump-minor-pre-major": true,
+  "handleGHRelease": true,
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "package-name": "cloudnative-observability-operator"
+    }
+  },
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance" },
+    { "type": "refactor", "section": "Refactor" },
+    { "type": "docs", "section": "Docs" },
+    { "type": "test", "section": "Tests" },
+    { "type": "ci", "section": "CI" },
+    { "type": "chore", "section": "Chores" }
+  ]
+}
