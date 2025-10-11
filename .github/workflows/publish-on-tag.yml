@@ -1,0 +1,115 @@
+name: publish-on-tag
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cloudnative-observability-operator
+  CHART_DIR: charts/cloudnative-observability-operator
+  CHART_REPO_BASENAME: charts
+  TAG: ${{ github.ref_name }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor}}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.3
+
+      - name: Cosign install
+        uses: sigstore/cosign-installer@v3
+
+
+      - name: Syft install
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Render versions into Chart.yaml
+        run: |
+          bash hack/release/render-versions.sh "${TAG}" "${CHART_DIR}"
+          echo "Rendered Chart.yaml with ${TAG}"
+
+      - name: Build & Push image (linux/amd64)
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          bash hack/release/buildx-push.sh "${REGISTRY}" "${OWNER}" "${IMAGE_NAME}" "${TAG}"
+
+      - name: Generate SBOM (SPDX JSON) for image
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          mkdir -p dist
+          bash hack/release/sbom.sh "${REGISTRY}/${OWNER}/${IMAGE_NAME}:${TAG}" "dist/${IMAGE_NAME}-${TAG#v}-sbom.spdx.json"
+
+      - name: Package & Push Helm chart (OCI)
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login "${REGISTRY}" --username ${{ github.actor }} --password-stdin
+          bash hack/release/helm-package-push.sh "${CHART_DIR}" "${REGISTRY}/${OWNER}/${CHART_REPO_BASENAME}" "${TAG}"
+
+      - name: Derive CHART_NAME (from Chart.yaml)
+        id: chartname
+        run: |
+          CHART_NAME="$(awk '/^name:/{print $2}' ${CHART_DIR}/Chart.yaml)"
+          echo "name=${CHART_NAME}" >> $GITHUB_OUTPUT
+          echo "Chart name: ${CHART_NAME}"
+
+      - name: Checksums (SBOM & Chart tgz)
+        run: |
+          bash hack/release/checksums.sh dist
+
+      - name: Cosign keyless sign - image
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          cosign sign --yes "${REGISTRY}/${OWNER}/${IMAGE_NAME}:${TAG}"
+
+      - name: Cosign keyless sign - helm chart (OCI artifact)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          cosign sign --yes "${REGISTRY}/${OWNER}/${{ env.CHART_REPO_BASENAME }}/${{ steps.chartname.outputs.name }}:${TAG}"
+
+      - name: Upload Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.spdx.json
+            dist/*.tgz
+            dist/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
