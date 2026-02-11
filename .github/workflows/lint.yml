@@ -41,7 +41,7 @@ jobs:
 
       - name: Setup Go
         if: steps.gofiles.outputs.has_mod == 'yes'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24.x'
           cache: true
